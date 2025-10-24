@@ -1,0 +1,2 @@
+[console_scripts]
+pdf_text_overlay = pdf_text_overlay.cli:main

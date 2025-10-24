@@ -1,61 +1,100 @@
-# WinOCR PDF CLI
+# PDF Text Overlay
 
-Windows-only PDF to text/markdown converter that renders pages with PyMuPDF and extracts text using the built-in Windows OCR engine (WinRT: `Windows.Media.Ocr`).
+Overlay an invisible text layer on top of image-only PDFs so they become searchable without altering the original visuals.
 
-## Prerequisites
-- Windows 10 or 11.
-- 64-bit Python 3.11 (`py -3.11`).
-- Run from PowerShell/CMD (not WSL).
-- Matching language pack with OCR support installed via **Settings → Time & Language → Language & Region**.
+## Features
+- Invisible text insertion using PDF rendering mode 3 (or near-transparent opacity fallback).
+- Accept pre-generated OCR JSON or run Windows WinRT OCR on the fly.
+- Adjustable baseline ratio, granularity (word/line), whitespace normalisation, hyphen repair, and optional debug overlays.
+- Optional best-effort PDF/A-2b output via pikepdf.
+- Ships with `pdf_text_overlay` console script **and** `python -m pdf_text_overlay` module entry point.
 
-## Setup
-1. Clone or download this repository.
-2. In PowerShell, run:
-   ```powershell
-   Set-ExecutionPolicy -Scope Process RemoteSigned
-   .\install_winocr.ps1
-   ```
-   - Creates/updates the virtual environment (`.venv-winocr` by default).
-   - Installs pinned dependencies from `requirements.txt`.
-   - Verifies WinRT projections, PyMuPDF, and Pillow imports.
-
-### Manual verification commands
-Execute inside the activated virtual environment:
+## Quick install
 ```powershell
-where python
-python -c "import sys; print(sys.executable)"
-python -m pip list | findstr /I winrt
-python -c "import winrt.windows.foundation, winrt.windows.foundation.collections"
-python -c "from winrt.windows.media.ocr import OcrEngine; print(OcrEngine)"
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
 ```
 
-## Usage
+For a regular (non-editable) install:
 ```powershell
-python winocr_pdf.py -i "C:\path\sample.pdf" --lang ko-KR --dpi 300 -o .\out --fmt both
-python winocr_pdf.py -i "C:\path\sample.pdf" --lang en-US --fmt text --dump-pages
+pip install .
 ```
 
-### CLI options
-- `-i/--input`: PDF file path (required).
-- `-o/--outdir`: Output directory (default `.\out`).
-- `--dpi`: Render DPI (default 300).
-- `--lang`: BCP-47 language tag (e.g., `ko-KR`, `en-US`). Automatically normalized (e.g., `ko-KR → ko`).
-- `--fmt`: Output type (`text`, `md`, `both`; aliases `txt`, `markdown`).
-- `--max-pages`: Process only the first N pages.
-- `--dry-run`: Perform OCR without writing any output files.
-- `--dump-pages`: Save per-page PNG snapshots and `<name>_layout.json` with word bounding boxes.
-- `--verbose`: Enable debug-level logging.
+To enable Windows WinRT OCR support:
+```powershell
+pip install .[winrt]
+```
 
-### Outputs
-- `<outdir>\<name>.txt`: Plain-text OCR with page separators (when `--fmt` includes `text`).
-- `<outdir>\<name>.md`: Markdown summary (when `--fmt` includes `md`).
-- `<outdir>\<name>_layout.json`: Line/word geometry (only when `--dump-pages` is set).
-- Optional PNGs: `<outdir>\<name>_page0001.png`, etc. (when `--dump-pages` is set).
+You can also run the bundled verifier:
+```powershell
+.\scripts\verify_install.ps1
+```
+
+## Usage examples
+```powershell
+pdf_text_overlay --pdf .\samples\sample1.pdf --out .\out\searchable.pdf --method invisible
+pdf_text_overlay --pdf scans.pdf --ocr-json ocr.json --out searchable.pdf --baseline-ratio 0.18 --granularity line
+python -m pdf_text_overlay.cli --pdf scans.pdf --out searchable.pdf --method opacity --debug-overlay
+```
+
+### Common options
+- `--pdf`: Input PDF path (required).
+- `--out`: Output searchable PDF path (required).
+- `--ocr-json`: Path to OCR JSON (skip live OCR when provided).
+- `--dpi`: Render DPI when WinRT OCR runs (default 300).
+- `--lang`: WinRT OCR language tag (default `ko-KR`).
+- `--granularity`: `word` (default) or `line`.
+- `--method`: `invisible` (render mode 3) or `opacity` (alpha ≈ 0.02).
+- `--font`: Unicode font file; otherwise system/packaged fonts are attempted, falling back to Helvetica.
+- `--baseline-ratio`: Adjust vertical alignment inside bounding boxes.
+- `--debug-overlay`: Draw translucent bounding boxes for QA.
+- `--keep-spaces`: Preserve original whitespace.
+- `--dehyphen`: Rejoin hyphenated line endings.
+- `--pdfa`: Attempt PDF/A-2b export (falls back with warning if enforcement fails).
+- `--dump-ocr-json`: Persist WinRT OCR results for later runs.
+- `--verbose`: Enable debug logging.
+
+## OCR JSON schema
+The package ships with `pdf_text_overlay/resources/examples/ocr_schema_example.json` showing the expected structure:
+```json
+[
+  {
+    "page": 0,
+    "width_px": 2480,
+    "height_px": 3508,
+    "lines": [
+      {"text": "...", "bbox": [x, y, w, h], "words": [...]}
+    ],
+    "words": [...]
+  }
+]
+```
+
+## WinRT OCR requirements
+- Windows 10/11, 64-bit.
+- Python 3.11 (64-bit). WSL is not supported.
+- Language pack with OCR installed via **Settings → Time & Language → Language & Region**.
+- Install extras: `pip install .[winrt]`.
 
 ## Troubleshooting
-- **WSL detected**: The script exits with guidance to run from Windows PowerShell; WinRT APIs are unavailable in WSL.
-- **Python version/architecture**: Ensure `where python` resolves to `3.11.x` in `C:\` (64-bit).
-- **Missing WinRT modules**: Re-run `install_winocr.ps1` or execute  
-  `python -m pip install -U winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Media.Ocr winrt-Windows.Globalization winrt-Windows.Graphics.Imaging winrt-Windows.Storage winrt-Windows.Storage.Streams`.
-- **Language pack errors**: Install the OCR language via Settings and restart the script.
-- **PDF issues**: Confirm the file opens in a viewer; encrypted or empty PDFs will raise descriptive errors.
+- **“pdf_text_overlay을(를) 인식하지 못합니다”**  
+  Install the package (`pip install -e .`) and open a fresh PowerShell so that `<venv>\Scripts` is on `PATH`.  
+  Validate with `where python` and `where pdf_text_overlay`.
+- **Module command not found**  
+  Run `python -m pdf_text_overlay.cli ...` inside the same environment or re-run the verifier script.
+- **No WinRT OCR**  
+  Ensure you installed the `[winrt]` extras and run outside WSL.
+- **Alignment issues**  
+  Tune `--baseline-ratio` (e.g., 0.12–0.2) or provide a specific font via `--font`.
+- **PDF/A validation**  
+  Use a validator such as [veraPDF](https://verapdf.org/) to confirm compliance.
+
+## Development & tests
+```powershell
+pip install -e .[winrt]  # optional
+pytest
+```
+
+## License
+Released under the MIT License. Packaged fonts (if provided) remain under their respective licenses.

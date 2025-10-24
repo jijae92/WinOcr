@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf_text_overlay"
+version = "0.1.0"
+description = "Overlay invisible text layer onto image-only PDFs to make them searchable"
+authors = [{ name = "WinOCR Tools" }]
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: Microsoft :: Windows",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "click>=8.1",
+    "pikepdf>=9.0",
+    "PyMuPDF>=1.24",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+winrt = [
+    "winrt-runtime",
+    "winrt-Windows.Foundation",
+    "winrt-Windows.Foundation.Collections",
+    "winrt-Windows.Media.Ocr",
+    "winrt-Windows.Globalization",
+    "winrt-Windows.Graphics.Imaging",
+    "winrt-Windows.Storage",
+    "winrt-Windows.Storage.Streams",
+]
+
+[project.scripts]
+pdf_text_overlay = "pdf_text_overlay.cli:main"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.package-data]
+"pdf_text_overlay" = ["resources/**/*"]
+
+[tool.setuptools]
+include-package-data = true
