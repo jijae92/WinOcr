@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 
@@ -20,6 +20,21 @@ from .ocr_io import (
 )
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+
+def _parse_pair(value: str, ctx: click.Context, param: click.Parameter) -> Tuple[float, float]:
+    try:
+        x_str, y_str = value.split(",")
+        return float(x_str), float(y_str)
+    except Exception as exc:  # pragma: no cover - click handles errors
+        raise click.BadParameter("Expected two comma-separated numbers, e.g. 0.0,0.0") from exc
+
+
+def _parse_scale(value: str, ctx: click.Context, param: click.Parameter) -> Tuple[float, float]:
+    sx, sy = _parse_pair(value, ctx, param)
+    if sx == 0 or sy == 0:
+        raise click.BadParameter("Scale corrections must be non-zero.")
+    return sx, sy
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -83,11 +98,21 @@ def _load_or_run_ocr(
 @click.option("--method", default="invisible", type=click.Choice(["invisible", "opacity"]), show_default=True, help="Rendering method for hidden text.")
 @click.option("--font", "font_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help="Font file to embed for overlay text.")
 @click.option("--baseline-ratio", default=0.15, show_default=True, type=click.FloatRange(0.0, 1.0), help="Baseline ratio within bounding box.")
+@click.option("--font-scale", default=1.0, show_default=True, type=click.FloatRange(0.1, 3.0), help="Scale factor applied to font size relative to bbox height.")
+@click.option("--align", default="auto", show_default=True, help="Alignment mode: auto, page, image:<xref>, or image-rect:x0,y0,x1,y1.")
+@click.option("--offset-pt", default="0,0", callback=_parse_pair, help="Global offset in points applied after mapping (dx,dy).")
+@click.option("--scale-corr", default="1,1", callback=_parse_scale, help="Scale correction multipliers (sx,sy).")
+@click.option("--rotate", type=click.Choice(["0", "90", "180", "270"]), default=None, help="Override page rotation (degrees).")
+@click.option("--deskew", default=0.0, show_default=True, type=click.FloatRange(-5.0, 5.0), help="Additional rotation applied to text placement.")
 @click.option("--debug-overlay", is_flag=True, help="Draw translucent bounding boxes for inspection.")
+@click.option("--visible-qa", is_flag=True, help="Render text visible in light gray for QA (overrides --method).")
 @click.option("--keep-spaces", is_flag=True, help="Keep original whitespace instead of collapsing.")
 @click.option("--dehyphen", is_flag=True, help="Recombine hyphenated line endings.")
+@click.option("--cjk-join", is_flag=True, help="Remove spaces between consecutive CJK characters.")
 @click.option("--pdfa", is_flag=True, help="Attempt to export as PDF/A-2b.")
 @click.option("--dump-ocr-json", type=click.Path(dir_okay=False, path_type=Path), default=None, help="Write OCR JSON to this path after WinRT OCR.")
+@click.option("--dump-debug-json", type=click.Path(dir_okay=False, path_type=Path), default=None, help="Write detailed placement diagnostics to JSON.")
+@click.option("--calibrate", default=0, show_default=True, type=click.IntRange(0, 1000), help="Log first N word placements for calibration.")
 @click.option("--max-pages", type=click.IntRange(1, 5000), default=None, help="Limit number of pages processed.")
 @click.option("--verbose", is_flag=True, help="Enable verbose logging.")
 def main(
@@ -100,11 +125,21 @@ def main(
     method: str,
     font_path: Optional[Path],
     baseline_ratio: float,
+    font_scale: float,
+    align: str,
+    offset_pt: Tuple[float, float],
+    scale_corr: Tuple[float, float],
+    rotate: Optional[str],
+    deskew: float,
     debug_overlay: bool,
+    visible_qa: bool,
     keep_spaces: bool,
     dehyphen: bool,
+    cjk_join: bool,
     pdfa: bool,
     dump_ocr_json: Optional[Path],
+    dump_debug_json: Optional[Path],
+    calibrate: int,
     max_pages: Optional[int],
     verbose: bool,
 ) -> None:
@@ -128,16 +163,28 @@ def main(
     if baseline_ratio <= 0.0 or baseline_ratio >= 1.0:
         logging.warning("Baseline ratio %.3f is extreme; consider staying within 0.1-0.3.", baseline_ratio)
 
+    rotate_override = int(rotate) if rotate is not None else None
+
     settings = OverlaySettings(
         method=method,
         granularity=granularity,
         baseline_ratio=baseline_ratio,
+        font_scale=font_scale,
         keep_spaces=keep_spaces,
         dehyphen=dehyphen,
+        cjk_join=cjk_join,
         debug_overlay=debug_overlay,
+        visible_qa=visible_qa,
         pdfa=pdfa,
         font_path=font_path,
         dpi=dpi,
+        align=align,
+        offset_pt=offset_pt,
+        scale_corr=scale_corr,
+        rotate_override=rotate_override,
+        deskew=deskew,
+        calibrate=calibrate,
+        dump_debug_json=dump_debug_json,
     )
 
     apply_text_overlay(pdf_path=pdf_path, pages=pages, output_path=out_path, settings=settings)
